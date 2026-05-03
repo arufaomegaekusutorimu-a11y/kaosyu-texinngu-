@@ -3,70 +3,47 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>顔シューティング -位置修正版-</title>
+    <title>顔シューティング -枠なし修正版-</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: sans-serif; color: white; }
-        
-        #ui-layer { 
-            position: absolute; inset: 0; z-index: 100; 
-            display: flex; flex-direction: column; align-items: center; justify-content: center; 
-            background: rgba(0,0,0,0.7);
-        }
-        /* 撮影中はプレビューを見やすく */
+        #ui-layer { position: absolute; inset: 0; z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(0,0,0,0.7); }
         #ui-layer.scanning { background: rgba(0,0,0,0.1); }
 
-        /* ガイドの枠線を太く、中心を分かりやすく */
         #guide-wrap { 
-            position: relative; width: 260px; height: 260px; 
-            border: 4px solid #0f0; border-radius: 50%; 
-            display: none; margin-bottom: 20px;
-            box-sizing: border-box;
+            position: relative; width: 256px; height: 256px; 
+            border: 5px solid #0f0; border-radius: 50%; 
+            display: none; margin-bottom: 20px; box-sizing: border-box;
+            box-shadow: 0 0 0 1000px rgba(0,0,0,0.5);
         }
-        .eye-guide {
-            position: absolute; width: 50px; height: 40px; border: 3px solid #00ffff;
-            border-radius: 50%; top: 30%;
-        }
-        #mouth-guide {
-            position: absolute; width: 80px; height: 10px; border-bottom: 5px solid #ff0055;
-            bottom: 20%; left: 50%; transform: translateX(-50%);
-        }
+        .eye-guide { position: absolute; width: 50px; height: 40px; border: 3px solid #00ffff; border-radius: 50%; top: 30%; }
+        #mouth-guide { position: absolute; width: 80px; height: 10px; border-bottom: 5px solid #ff0055; bottom: 20%; left: 50%; transform: translateX(-50%); }
 
         .controls { display: flex; gap: 10px; flex-direction: column; align-items: center; }
-        button { 
-            padding: 15px 35px; font-size: 1.2rem; cursor: pointer; 
-            background: #ff4400; color: white; border: none; border-radius: 50px; 
-            font-weight: bold; box-shadow: 0 4px #992200;
-        }
+        button { padding: 15px 35px; font-size: 1.2rem; cursor: pointer; background: #ff4400; color: white; border: none; border-radius: 50px; font-weight: bold; }
         #btn-flip { display: none; background: #444; font-size: 0.9rem; padding: 10px 20px; }
-
-        #crosshair { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 30px; height: 30px; border: 2px solid #fff; border-radius: 50%; display: none; z-index: 50; pointer-events: none; }
         #score-board { position: absolute; top: 20px; left: 20px; font-size: 24px; color: #0f0; display: none; z-index: 80; }
-        #enemy-arrow { position: absolute; top: 50%; left: 50%; width: 100px; height: 100px; margin: -50px; pointer-events: none; display: none; z-index: 60; }
-        .arrow-graphic { width: 0; height: 0; border-left: 15px solid transparent; border-right: 15px solid transparent; border-bottom: 30px solid yellow; position: absolute; left: 35px; top: -60px; }
-        
+        #crosshair { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 30px; height: 30px; border: 2px solid #fff; border-radius: 50%; display: none; pointer-events: none; }
         canvas { display: none; }
     </style>
 </head>
 <body>
 
 <div id="ui-layer">
-    <h1 id="title">顔シューティング</h1>
+    <h1>顔シューティング</h1>
     <div id="guide-wrap">
         <div class="eye-guide" style="left: 15%;"></div>
         <div class="eye-guide" style="right: 15%;"></div>
         <div id="mouth-guide"></div>
     </div>
     <div class="controls">
-        <p id="msg">ガイドの「円」に顔を収めてください</p>
+        <p id="msg">円の中に顔を入れて撮影！</p>
         <button id="btn-main">カメラを起動</button>
         <button id="btn-flip">カメラ切替</button>
-        <p id="btn-test" style="cursor:pointer; text-decoration:underline; margin-top:20px; opacity:0.6;">テストモード</p>
     </div>
 </div>
 
 <div id="score-board">SCORE: 0</div>
 <div id="crosshair"></div>
-<div id="enemy-arrow"><div class="arrow-graphic"></div></div>
 
 <canvas id="canv-base" width="256" height="256"></canvas>
 <canvas id="canv-smile" width="256" height="256"></canvas>
@@ -87,7 +64,7 @@ let lon = 0, lat = 0;
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-const renderer = new THREE.WebGLRenderer({ antialias: true });
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
@@ -100,181 +77,138 @@ bgScene.add(bgMesh);
 async function setupCamera(mode) {
     if (stream) stream.getTracks().forEach(t => t.stop());
     currentFacingMode = mode;
-    // 高解像度を要求してズレを減らす
-    stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { facingMode: mode, width: { ideal: 1280 }, height: { ideal: 720 } } 
-    });
-    video.srcObject = stream;
-    await video.play();
+    try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: mode, width: 1280, height: 720 } });
+        video.srcObject = stream;
+        await video.play();
+    } catch(e) { alert("カメラが起動できません"); }
 }
 
-// 顔パーツ強制変形
+// 顔パーツ抽出 & 円形切り抜き
+function processFace(ctx, sourceCanvas) {
+    ctx.clearRect(0, 0, 256, 256); // 完全に透明にクリア
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(128, 128, 120, 0, Math.PI * 2);
+    ctx.clip(); // 円形以外を描画不可に
+    ctx.drawImage(sourceCanvas, 0, 0);
+    ctx.restore();
+}
+
 function makeFaces(base) {
+    faceTextures.forEach(t => t.dispose());
     faceTextures.length = 0;
-    faceTextures.push(new THREE.CanvasTexture(base)); // 0: 通常
 
-    // 笑顔作成
-    const sCanv = document.getElementById('canv-smile');
-    const sCtx = sCanv.getContext('2d');
-    sCtx.drawImage(base, 0, 0);
-    sCtx.fillStyle = "rgba(255,255,0,0.1)"; sCtx.fillRect(0,0,256,256);
-    sCtx.drawImage(base, 60, 160, 136, 60, 40, 155, 176, 75); 
-    faceTextures.push(new THREE.CanvasTexture(sCanv));
+    const createTex = (id, modifierFn) => {
+        const c = document.getElementById(id);
+        const ctx = c.getContext('2d');
+        processFace(ctx, base);
+        if (modifierFn) modifierFn(ctx);
+        const tex = new THREE.CanvasTexture(c);
+        tex.colorSpace = THREE.SRGBColorSpace;
+        return tex;
+    };
 
-    // 怒り作成
-    const aCanv = document.getElementById('canv-angry');
-    const aCtx = aCanv.getContext('2d');
-    aCtx.drawImage(base, 0, 0);
-    aCtx.fillStyle = "rgba(255,0,0,0.2)"; aCtx.fillRect(0,0,256,256);
-    aCtx.save();
-    aCtx.translate(80, 100); aCtx.rotate(0.2); aCtx.drawImage(base, 50, 70, 70, 60, -35, -30, 70, 60);
-    aCtx.restore();
-    aCtx.save();
-    aCtx.translate(176, 100); aCtx.rotate(-0.2); aCtx.drawImage(base, 140, 70, 70, 60, -35, -30, 70, 60);
-    aCtx.restore();
-    faceTextures.push(new THREE.CanvasTexture(aCanv));
+    faceTextures.push(createTex('canv-base'));
+    faceTextures.push(createTex('canv-smile', (ctx) => {
+        ctx.save();
+        ctx.beginPath(); ctx.arc(128, 128, 120, 0, Math.PI * 2); ctx.clip();
+        ctx.fillStyle = "rgba(255,255,0,0.1)"; ctx.fillRect(0,0,256,256);
+        ctx.drawImage(base, 60, 160, 136, 60, 40, 155, 176, 75);
+        ctx.restore();
+    }));
+    faceTextures.push(createTex('canv-angry', (ctx) => {
+        ctx.save();
+        ctx.beginPath(); ctx.arc(128, 128, 120, 0, Math.PI * 2); ctx.clip();
+        ctx.fillStyle = "rgba(255,0,0,0.2)"; ctx.fillRect(0,0,256,256);
+        ctx.save(); ctx.translate(80, 100); ctx.rotate(0.2); ctx.drawImage(base, 50, 70, 70, 60, -35, -30, 70, 60); ctx.restore();
+        ctx.save(); ctx.translate(176, 100); ctx.rotate(-0.2); ctx.drawImage(base, 140, 70, 70, 60, -35, -30, 70, 60); ctx.restore();
+        ctx.restore();
+    }));
 }
 
 function spawn(first = false) {
-    const mesh = new THREE.Mesh(new THREE.SphereGeometry(1.5, 32, 32), new THREE.MeshBasicMaterial({ map: faceTextures[0] }));
-    if (first) mesh.position.set(0, 0, -10);
+    // ★ 修正点: alphaTest を 0.5 に設定して四角い枠を物理的に消す
+    const material = new THREE.SpriteMaterial({ 
+        map: faceTextures[0], 
+        transparent: true,
+        alphaTest: 0.5 
+    });
+    const sprite = new THREE.Sprite(material);
+    sprite.scale.set(3, 3, 1);
+
+    if (first) sprite.position.set(0, 0, -10);
     else {
         const t = Math.random() * Math.PI * 2, p = (Math.random() - 0.5) * Math.PI * 0.6;
-        mesh.position.setFromSphericalCoords(12, p + Math.PI/2, t);
+        sprite.position.setFromSphericalCoords(12, p + Math.PI/2, t);
     }
-    mesh.userData = { offset: Math.random() * 10 };
-    scene.add(mesh);
-    targets.push(mesh);
+    
+    sprite.userData = { offset: Math.random() * 10 };
+    scene.add(sprite);
+    targets.push(sprite);
 }
 
 const btnMain = document.getElementById('btn-main');
 const btnFlip = document.getElementById('btn-flip');
-const uiLayer = document.getElementById('ui-layer');
 
 btnMain.onclick = async () => {
-    if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-        try { await DeviceOrientationEvent.requestPermission(); } catch(e){}
-    }
-
     if (state === 'TITLE') {
         await setupCamera("user");
         state = 'SCAN';
-        uiLayer.classList.add('scanning');
+        document.getElementById('ui-layer').classList.add('scanning');
         document.getElementById('guide-wrap').style.display = 'block';
         btnFlip.style.display = 'block';
         btnMain.innerText = "撮影！";
     } else if (state === 'SCAN') {
-        const canv = document.getElementById('canv-base');
-        const ctx = canv.getContext('2d');
-        
-        // --- ★重要: センタークロップと反転の修正 ---
-        const vW = video.videoWidth;
-        const vH = video.videoHeight;
-        const size = Math.min(vW, vH); // 短い方を基準に正方形を作る
-        const sx = (vW - size) / 2;    // 横の中央位置
-        const sy = (vH - size) / 2;    // 縦の中央位置
+        const tempCanv = document.createElement('canvas');
+        tempCanv.width = 256; tempCanv.height = 256;
+        const tCtx = tempCanv.getContext('2d');
+        const size = Math.min(video.videoWidth, video.videoHeight);
+        const sx = (video.videoWidth - size) / 2, sy = (video.videoHeight - size) / 2;
 
-        ctx.clearRect(0, 0, 256, 256);
-        ctx.save();
+        if (currentFacingMode === "user") { tCtx.translate(256, 0); tCtx.scale(-1, 1); }
+        tCtx.drawImage(video, sx, sy, size, size, 0, 0, 256, 256);
         
-        if (currentFacingMode === "user") {
-            // 中心を軸に左右反転
-            ctx.translate(256, 0);
-            ctx.scale(-1, 1);
-        }
-        
-        // 元映像の(sx, sy)からsize×sizeを切り取り、256×256に描画
-        ctx.drawImage(video, sx, sy, size, size, 0, 0, 256, 256);
-        ctx.restore();
-        
-        makeFaces(canv);
+        makeFaces(tempCanv);
         start();
     }
 };
 
-btnFlip.onclick = async () => {
-    await setupCamera(currentFacingMode === "user" ? "environment" : "user");
-};
-
-document.getElementById('btn-test').onclick = () => {
-    const canv = document.getElementById('canv-base');
-    const ctx = canv.getContext('2d');
-    ctx.fillStyle = "blue"; ctx.fillRect(0,0,256,256);
-    makeFaces(canv);
-    start();
-};
+btnFlip.onclick = () => setupCamera(currentFacingMode === "user" ? "environment" : "user");
 
 function start() {
     state = 'PLAY';
-    uiLayer.style.display = 'none';
+    document.getElementById('ui-layer').style.display = 'none';
     document.getElementById('crosshair').style.display = 'block';
     document.getElementById('score-board').style.display = 'block';
-    document.getElementById('enemy-arrow').style.display = 'block';
     spawn(true); spawn(); spawn();
     setupCamera("environment");
 }
 
-// 視点操作（マウス）
-document.addEventListener('mousemove', (e) => {
-    if (state === 'PLAY') {
-        lon -= e.movementX * 0.15;
-        lat = Math.max(-85, Math.min(85, lat - e.movementY * 0.15));
-    }
-});
-
-// 視点操作（ジャイロ）
-window.addEventListener('deviceorientation', (e) => {
-    if (state === 'PLAY' && e.alpha !== null && e.alpha !== 0) {
-        isGyroActive = true;
-        camera.rotation.set(THREE.MathUtils.degToRad(e.beta - 90), THREE.MathUtils.degToRad(e.alpha), THREE.MathUtils.degToRad(e.gamma), 'YXZ');
-    }
-}, true);
-
-// 弾の発射
-window.addEventListener('pointerdown', (e) => {
-    if (state !== 'PLAY' || e.target.tagName === 'BUTTON') return;
-    const b = new THREE.Mesh(new THREE.SphereGeometry(0.3), new THREE.MeshBasicMaterial({ color: 0xffff00 }));
-    b.position.copy(camera.position);
-    const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
-    b.userData.velocity = dir.multiplyScalar(1.2);
-    scene.add(b); bullets.push(b);
-});
-
 function animate() {
     requestAnimationFrame(animate);
     if (state === 'PLAY') {
+        targets.forEach(t => {
+            const mood = Math.floor(Date.now() * 0.002 + t.userData.offset) % 3;
+            t.material.map = faceTextures[mood];
+        });
+
+        bullets.forEach((b, i) => {
+            b.position.add(b.userData.velocity);
+            targets.forEach((t, j) => {
+                if (b.position.distanceTo(t.position) < 1.5) {
+                    scene.remove(t); targets.splice(j, 1);
+                    scene.remove(b); bullets.splice(i, 1);
+                    score += 100; document.getElementById('score-board').innerText = `SCORE: ${score}`;
+                    setTimeout(spawn, 1500);
+                }
+            });
+        });
+
         if (!isGyroActive) {
             const phi = THREE.MathUtils.degToRad(90 - lat);
             const theta = THREE.MathUtils.degToRad(lon);
             camera.lookAt(new THREE.Vector3().setFromSphericalCoords(1, phi, theta));
-        }
-
-        let nearest = null;
-        targets.forEach(t => {
-            const mood = Math.floor(Date.now() * 0.002 + t.userData.offset) % 3;
-            t.material.map = faceTextures[mood];
-            t.lookAt(camera.position);
-            const v = t.position.clone().project(camera);
-            if (v.z > 1 || Math.abs(v.x) > 0.8 || Math.abs(v.y) > 0.8) nearest = v;
-        });
-
-        const arrow = document.getElementById('enemy-arrow');
-        if (nearest && targets.length > 0) {
-            arrow.style.display = 'block';
-            arrow.style.transform = `rotate(${Math.atan2(nearest.x, nearest.y)}rad)`;
-        } else { arrow.style.display = 'none'; }
-
-        for (let i = bullets.length - 1; i >= 0; i--) {
-            const b = bullets[i]; b.position.add(b.userData.velocity);
-            for (let j = targets.length - 1; j >= 0; j--) {
-                const t = targets[j];
-                if (b.position.distanceTo(t.position) < 2) {
-                    scene.remove(t); targets.splice(j, 1);
-                    scene.remove(b); bullets.splice(i, 1);
-                    score += 100; document.getElementById('score-board').innerText = `SCORE: ${score}`;
-                    setTimeout(spawn, 2000); break;
-                }
-            }
         }
     }
     renderer.autoClear = false;
@@ -285,10 +219,15 @@ function animate() {
 }
 animate();
 
-window.addEventListener('resize', () => {
-    camera.aspect = window.innerWidth / window.innerHeight;
-    camera.updateProjectionMatrix();
-    renderer.setSize(window.innerWidth, window.innerHeight);
+document.addEventListener('mousemove', (e) => { if(state==='PLAY'){ lon -= e.movementX*0.1; lat = Math.max(-85, Math.min(85, lat-e.movementY*0.1)); } });
+window.addEventListener('deviceorientation', (e) => { if(state==='PLAY' && e.alpha){ isGyroActive=true; camera.rotation.set(THREE.MathUtils.degToRad(e.beta-90), THREE.MathUtils.degToRad(e.alpha), THREE.MathUtils.degToRad(e.gamma), 'YXZ'); } }, true);
+window.addEventListener('pointerdown', (e) => {
+    if (state !== 'PLAY' || e.target.tagName === 'BUTTON') return;
+    const b = new THREE.Mesh(new THREE.SphereGeometry(0.2), new THREE.MeshBasicMaterial({ color: 0xffff00 }));
+    b.position.copy(camera.position);
+    const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+    b.userData.velocity = dir.multiplyScalar(1.0);
+    scene.add(b); bullets.push(b);
 });
 </script>
 </body>
