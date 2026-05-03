@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Next-Gen Face Shooting</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; }
+        #ui { position: absolute; top: 20px; left: 20px; color: white; z-index: 10; font-family: sans-serif; }
+        button { padding: 10px; cursor: pointer; background: rgba(255,255,255,0.2); color: white; border: 1px solid white; border-radius: 5px; }
+        #crosshair { 
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            width: 40px; height: 40px; border: 2px solid rgba(255,0,0,0.5); border-radius: 50%;
+            pointer-events: none; z-index: 5;
+        }
+        #crosshair::after { content: ''; position: absolute; top: 50%; left: 50%; width: 10px; height: 2px; background: red; transform: translate(-50%,-50%); }
+        #crosshair::before { content: ''; position: absolute; top: 50%; left: 50%; width: 2px; height: 10px; background: red; transform: translate(-50%,-50%); }
+    </style>
+</head>
+<body>
+
+<div id="ui">
+    <div id="score">SCORE: 0</div>
+    <button id="cameraToggle">カメラ: OFF (ダミー顔モード)</button>
+    <p style="font-size: 12px;">※スマホは画面タップで射撃 / 傾きで操作</p>
+</div>
+<div id="crosshair"></div>
+
+<!-- ライブラリ読み込み -->
+<script type="importmap">
+{
+    "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+    }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+
+// --- 設定変数 ---
+let useCamera = false;
+let score = 0;
+const targets = [];
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.appendChild(renderer.domElement);
+
+// --- カメラ映像の設定 ---
+const video = document.createElement('video');
+video.setAttribute('autoplay', '');
+video.setAttribute('muted', '');
+video.setAttribute('playsinline', '');
+
+const videoTexture = new THREE.VideoTexture(video);
+const backgroundMesh = new THREE.Mesh(
+    new THREE.PlaneGeometry(2, 2),
+    new THREE.MeshBasicMaterial({ map: videoTexture })
+);
+backgroundMesh.material.depthTest = false;
+backgroundMesh.material.depthWrite = false;
+const backgroundScene = new THREE.Scene();
+const backgroundCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+backgroundScene.add(backgroundMesh);
+
+// --- 敵（顔ターゲット）の作成関数 ---
+function createEnemy() {
+    const geometry = new THREE.SphereGeometry(0.5, 32, 32);
+    // カメラOFF時はデフォルトのテクスチャ（ダミー画像など）
+    const material = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    
+    const mesh = new THREE.Mesh(geometry, material);
+    
+    // ランダムな位置（カメラの周囲）
+    mesh.position.set(
+        (Math.random() - 0.5) * 10,
+        (Math.random() - 0.5) * 10,
+        -5 - Math.random() * 5
+    );
+    
+    scene.add(mesh);
+    targets.push(mesh);
+}
+
+// --- 射撃ロジック ---
+function shoot() {
+    const raycaster = new THREE.Raycaster();
+    // 画面中央（照準）からレイを飛ばす
+    raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+    const intersects = raycaster.intersectObjects(targets);
+
+    if (intersects.length > 0) {
+        const hit = intersects[0].object;
+        scene.remove(hit);
+        targets.splice(targets.indexOf(hit), 1);
+        score += 100;
+        document.getElementById('score').innerText = `SCORE: ${score}`;
+        createEnemy(); // 倒したら補充
+    }
+}
+
+// --- デバイス傾き検知 ---
+window.addEventListener('deviceorientation', (e) => {
+    if (e.alpha !== null) {
+        // ジャイロによる回転（簡易版）
+        camera.rotation.y = THREE.MathUtils.degToRad(e.alpha);
+        camera.rotation.x = THREE.MathUtils.degToRad(e.beta - 90);
+    }
+}, true);
+
+// --- カメラ切り替え ---
+document.getElementById('cameraToggle').onclick = async () => {
+    if (!useCamera) {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+            video.srcObject = stream;
+            video.play();
+            useCamera = true;
+            document.getElementById('cameraToggle').innerText = "カメラ: ON";
+        } catch (err) {
+            alert("カメラへのアクセスを許可してください");
+        }
+    } else {
+        const stream = video.srcObject;
+        stream.getTracks().forEach(track => track.stop());
+        useCamera = false;
+        document.getElementById('cameraToggle').innerText = "カメラ: OFF";
+    }
+};
+
+// --- メインループ ---
+function animate() {
+    requestAnimationFrame(animate);
+    
+    // 敵を少し動かす
+    targets.forEach(t => {
+        t.position.y += Math.sin(Date.now() * 0.002) * 0.01;
+    });
+
+    renderer.autoClear = false;
+    renderer.clear();
+    if (useCamera) renderer.render(backgroundScene, backgroundCamera);
+    renderer.render(scene, camera);
+}
+
+// 初期化
+window.onclick = shoot;
+for(let i=0; i<5; i++) createEnemy();
+camera.position.z = 0;
+animate();
+
+// 画面リサイズ対応
+window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+</script>
+</body>
+</html>
