@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>顔シューティング -顔変形版-</title>
+    <title>顔シューティング -位置修正版-</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: sans-serif; color: white; }
         
@@ -12,21 +12,23 @@
             display: flex; flex-direction: column; align-items: center; justify-content: center; 
             background: rgba(0,0,0,0.7);
         }
-        #ui-layer.scanning { background: rgba(0,0,0,0.2); }
+        /* 撮影中はプレビューを見やすく */
+        #ui-layer.scanning { background: rgba(0,0,0,0.1); }
 
-        /* 精密撮影ガイド */
+        /* ガイドの枠線を太く、中心を分かりやすく */
         #guide-wrap { 
-            position: relative; width: 260px; height: 300px; 
-            border: 3px dashed rgba(255,255,255,0.5); border-radius: 50% 50% 40% 40%; 
+            position: relative; width: 260px; height: 260px; 
+            border: 4px solid #0f0; border-radius: 50%; 
             display: none; margin-bottom: 20px;
+            box-sizing: border-box;
         }
         .eye-guide {
             position: absolute; width: 50px; height: 40px; border: 3px solid #00ffff;
             border-radius: 50%; top: 30%;
         }
         #mouth-guide {
-            position: absolute; width: 80px; height: 20px; border-bottom: 4px solid #ff0055;
-            bottom: 25%; left: 50%; transform: translateX(-50%);
+            position: absolute; width: 80px; height: 10px; border-bottom: 5px solid #ff0055;
+            bottom: 20%; left: 50%; transform: translateX(-50%);
         }
 
         .controls { display: flex; gap: 10px; flex-direction: column; align-items: center; }
@@ -35,7 +37,7 @@
             background: #ff4400; color: white; border: none; border-radius: 50px; 
             font-weight: bold; box-shadow: 0 4px #992200;
         }
-        #btn-flip { display: none; background: #444; font-size: 0.9rem; padding: 10px 20px; margin-top: 10px; }
+        #btn-flip { display: none; background: #444; font-size: 0.9rem; padding: 10px 20px; }
 
         #crosshair { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 30px; height: 30px; border: 2px solid #fff; border-radius: 50%; display: none; z-index: 50; pointer-events: none; }
         #score-board { position: absolute; top: 20px; left: 20px; font-size: 24px; color: #0f0; display: none; z-index: 80; }
@@ -55,7 +57,7 @@
         <div id="mouth-guide"></div>
     </div>
     <div class="controls">
-        <p id="msg">目と口をガイドに合わせてください</p>
+        <p id="msg">ガイドの「円」に顔を収めてください</p>
         <button id="btn-main">カメラを起動</button>
         <button id="btn-flip">カメラ切替</button>
         <p id="btn-test" style="cursor:pointer; text-decoration:underline; margin-top:20px; opacity:0.6;">テストモード</p>
@@ -98,46 +100,38 @@ bgScene.add(bgMesh);
 async function setupCamera(mode) {
     if (stream) stream.getTracks().forEach(t => t.stop());
     currentFacingMode = mode;
-    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: mode } });
+    // 高解像度を要求してズレを減らす
+    stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { facingMode: mode, width: { ideal: 1280 }, height: { ideal: 720 } } 
+    });
     video.srcObject = stream;
     await video.play();
 }
 
-// --- 顔パーツ強制変形システム ---
+// 顔パーツ強制変形
 function makeFaces(base) {
     faceTextures.length = 0;
     faceTextures.push(new THREE.CanvasTexture(base)); // 0: 通常
 
-    // 笑顔作成 (口を横に広げて上に持ち上げる)
+    // 笑顔作成
     const sCanv = document.getElementById('canv-smile');
     const sCtx = sCanv.getContext('2d');
     sCtx.drawImage(base, 0, 0);
-    // 口のエリア (中心付近) を抽出して変形
-    sCtx.fillStyle = "rgba(255,255,0,0.1)"; // 笑顔は少し明るく
-    sCtx.fillRect(0,0,256,256);
-    // 元の口の位置(中心下部)を少し拡大してコピー
+    sCtx.fillStyle = "rgba(255,255,0,0.1)"; sCtx.fillRect(0,0,256,256);
     sCtx.drawImage(base, 60, 160, 136, 60, 40, 155, 176, 75); 
     faceTextures.push(new THREE.CanvasTexture(sCanv));
 
-    // 怒り作成 (目を中央に向けて傾ける)
+    // 怒り作成
     const aCanv = document.getElementById('canv-angry');
     const aCtx = aCanv.getContext('2d');
     aCtx.drawImage(base, 0, 0);
-    aCtx.fillStyle = "rgba(255,0,0,0.2)"; // 怒りは赤
-    aCtx.fillRect(0,0,256,256);
-    
-    // 左目
+    aCtx.fillStyle = "rgba(255,0,0,0.2)"; aCtx.fillRect(0,0,256,256);
     aCtx.save();
-    aCtx.translate(80, 100); aCtx.rotate(0.2); 
-    aCtx.drawImage(base, 50, 70, 70, 60, -35, -30, 70, 60);
+    aCtx.translate(80, 100); aCtx.rotate(0.2); aCtx.drawImage(base, 50, 70, 70, 60, -35, -30, 70, 60);
     aCtx.restore();
-    
-    // 右目
     aCtx.save();
-    aCtx.translate(176, 100); aCtx.rotate(-0.2);
-    aCtx.drawImage(base, 140, 70, 70, 60, -35, -30, 70, 60);
+    aCtx.translate(176, 100); aCtx.rotate(-0.2); aCtx.drawImage(base, 140, 70, 70, 60, -35, -30, 70, 60);
     aCtx.restore();
-
     faceTextures.push(new THREE.CanvasTexture(aCanv));
 }
 
@@ -148,7 +142,7 @@ function spawn(first = false) {
         const t = Math.random() * Math.PI * 2, p = (Math.random() - 0.5) * Math.PI * 0.6;
         mesh.position.setFromSphericalCoords(12, p + Math.PI/2, t);
     }
-    mesh.userData = { offset: Math.random() * 10, mood: 0 };
+    mesh.userData = { offset: Math.random() * 10 };
     scene.add(mesh);
     targets.push(mesh);
 }
@@ -172,9 +166,27 @@ btnMain.onclick = async () => {
     } else if (state === 'SCAN') {
         const canv = document.getElementById('canv-base');
         const ctx = canv.getContext('2d');
-        if (currentFacingMode === "user") { ctx.translate(256, 0); ctx.scale(-1, 1); }
-        const size = Math.min(video.videoWidth, video.videoHeight);
-        ctx.drawImage(video, (video.videoWidth-size)/2, (video.videoHeight-size)/2, size, size, 0, 0, 256, 256);
+        
+        // --- ★重要: センタークロップと反転の修正 ---
+        const vW = video.videoWidth;
+        const vH = video.videoHeight;
+        const size = Math.min(vW, vH); // 短い方を基準に正方形を作る
+        const sx = (vW - size) / 2;    // 横の中央位置
+        const sy = (vH - size) / 2;    // 縦の中央位置
+
+        ctx.clearRect(0, 0, 256, 256);
+        ctx.save();
+        
+        if (currentFacingMode === "user") {
+            // 中心を軸に左右反転
+            ctx.translate(256, 0);
+            ctx.scale(-1, 1);
+        }
+        
+        // 元映像の(sx, sy)からsize×sizeを切り取り、256×256に描画
+        ctx.drawImage(video, sx, sy, size, size, 0, 0, 256, 256);
+        ctx.restore();
+        
         makeFaces(canv);
         start();
     }
@@ -182,6 +194,14 @@ btnMain.onclick = async () => {
 
 btnFlip.onclick = async () => {
     await setupCamera(currentFacingMode === "user" ? "environment" : "user");
+};
+
+document.getElementById('btn-test').onclick = () => {
+    const canv = document.getElementById('canv-base');
+    const ctx = canv.getContext('2d');
+    ctx.fillStyle = "blue"; ctx.fillRect(0,0,256,256);
+    makeFaces(canv);
+    start();
 };
 
 function start() {
@@ -194,6 +214,7 @@ function start() {
     setupCamera("environment");
 }
 
+// 視点操作（マウス）
 document.addEventListener('mousemove', (e) => {
     if (state === 'PLAY') {
         lon -= e.movementX * 0.15;
@@ -201,6 +222,7 @@ document.addEventListener('mousemove', (e) => {
     }
 });
 
+// 視点操作（ジャイロ）
 window.addEventListener('deviceorientation', (e) => {
     if (state === 'PLAY' && e.alpha !== null && e.alpha !== 0) {
         isGyroActive = true;
@@ -208,6 +230,7 @@ window.addEventListener('deviceorientation', (e) => {
     }
 }, true);
 
+// 弾の発射
 window.addEventListener('pointerdown', (e) => {
     if (state !== 'PLAY' || e.target.tagName === 'BUTTON') return;
     const b = new THREE.Mesh(new THREE.SphereGeometry(0.3), new THREE.MeshBasicMaterial({ color: 0xffff00 }));
@@ -228,7 +251,6 @@ function animate() {
 
         let nearest = null;
         targets.forEach(t => {
-            // 表情をゆっくり変える (0:通常 -> 1:笑 -> 2:怒)
             const mood = Math.floor(Date.now() * 0.002 + t.userData.offset) % 3;
             t.material.map = faceTextures[mood];
             t.lookAt(camera.position);
@@ -262,6 +284,12 @@ function animate() {
     renderer.render(scene, camera);
 }
 animate();
+
+window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+});
 </script>
 </body>
 </html>
