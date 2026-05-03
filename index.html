@@ -3,48 +3,57 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>低予算顔シューティング -完全版-</title>
+    <title>顔シューティング -カメラ改善版-</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #000; font-family: 'Hiragino Kaku Gothic ProN', sans-serif; color: white; }
+        body { margin: 0; overflow: hidden; background: #000; font-family: sans-serif; color: white; }
         
-        /* 画面全体オーバーレイ */
-        #ui-layer { position: absolute; inset: 0; z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(0,0,0,0.8); transition: opacity 0.5s; }
+        /* UIレイヤー: 撮影中は背景を少し明るく(0.4)設定 */
+        #ui-layer { 
+            position: absolute; inset: 0; z-index: 100; 
+            display: flex; flex-direction: column; align-items: center; justify-content: center; 
+            background: rgba(0,0,0,0.7); /* 少し薄くしました */
+            transition: background 0.3s;
+        }
+        #ui-layer.scanning { background: rgba(0,0,0,0.3); } /* 撮影中はもっと薄く */
+
+        #guide-wrap { 
+            position: relative; width: 240px; height: 280px; 
+            border: 4px solid #0f0; border-radius: 50% 50% 40% 40%; 
+            display: none; margin-bottom: 20px; box-shadow: 0 0 20px rgba(0,255,0,0.5);
+        }
+
+        .controls { display: flex; gap: 10px; flex-direction: column; align-items: center; }
         
-        /* 撮影ガイド（3DS風） */
-        #guide-wrap { position: relative; width: 260px; height: 300px; border: 4px solid #0f0; border-radius: 50% 50% 45% 45%; display: none; margin-bottom: 20px; box-shadow: 0 0 15px #0f0; }
-        .guide-line { position: absolute; background: rgba(0,255,0,0.6); height: 2px; width: 50px; top: 40%; }
-        #guide-mouth { position: absolute; bottom: 25%; left: 50%; width: 80px; height: 2px; transform: translateX(-50%); background: rgba(0,255,0,0.6); }
-
-        button { padding: 18px 45px; font-size: 1.4rem; cursor: pointer; background: #ff4400; color: white; border: none; border-radius: 50px; font-weight: bold; box-shadow: 0 5px #992200; }
-        button:active { transform: translateY(3px); box-shadow: none; }
-
-        /* ゲーム中UI */
-        #crosshair { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 40px; height: 40px; border: 2px solid #fff; border-radius: 50%; display: none; z-index: 50; pointer-events: none; }
-        #crosshair::after { content: ''; position: absolute; top: 50%; left: 50%; width: 60%; height: 2px; background: #fff; transform: translate(-50%, -50%); }
-        #crosshair::before { content: ''; position: absolute; top: 50%; left: 50%; width: 2px; height: 60%; background: #fff; transform: translate(-50%, -50%); }
+        button { 
+            padding: 15px 35px; font-size: 1.2rem; cursor: pointer; 
+            background: #ff4400; color: white; border: none; border-radius: 50px; 
+            font-weight: bold; box-shadow: 0 4px #992200;
+        }
+        button:active { transform: translateY(2px); box-shadow: none; }
         
-        #score-board { position: absolute; top: 20px; left: 20px; font-size: 24px; color: #0f0; display: none; z-index: 80; font-weight: bold; text-shadow: 2px 2px 4px #000; }
+        /* カメラ切り替えボタン */
+        #btn-flip { 
+            display: none; background: #444; font-size: 0.9rem; padding: 10px 20px; margin-top: 10px;
+        }
 
-        /* 敵方向ガイド矢印 */
-        #enemy-arrow { position: absolute; top: 50%; left: 50%; width: 120px; height: 120px; margin: -60px; pointer-events: none; display: none; z-index: 60; }
-        .arrow-graphic { width: 0; height: 0; border-left: 20px solid transparent; border-right: 20px solid transparent; border-bottom: 35px solid #ffea00; position: absolute; left: 40px; top: -70px; filter: drop-shadow(0 0 5px black); }
-
+        #crosshair { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 30px; height: 30px; border: 2px solid #fff; border-radius: 50%; display: none; z-index: 50; pointer-events: none; }
+        #score-board { position: absolute; top: 20px; left: 20px; font-size: 24px; color: #0f0; display: none; z-index: 80; font-weight: bold; }
+        #enemy-arrow { position: absolute; top: 50%; left: 50%; width: 100px; height: 100px; margin: -50px; pointer-events: none; display: none; z-index: 60; }
+        .arrow-graphic { width: 0; height: 0; border-left: 15px solid transparent; border-right: 15px solid transparent; border-bottom: 30px solid yellow; position: absolute; left: 35px; top: -60px; }
+        
         canvas { display: none; }
     </style>
 </head>
 <body>
 
 <div id="ui-layer">
-    <h1 id="title-text">顔シューティング</h1>
-    <div id="guide-wrap">
-        <div class="guide-line" style="left:10%"></div>
-        <div class="guide-line" style="right:10%"></div>
-        <div id="guide-mouth"></div>
-    </div>
-    <div class="ui-content">
-        <p id="msg">スマホを傾けるか、マウスで操作せよ！</p>
+    <h1 id="title">顔シューティング</h1>
+    <div id="guide-wrap"></div>
+    <div class="controls">
+        <p id="msg">カメラを許可して顔を撮ってください</p>
         <button id="btn-main">カメラを起動</button>
-        <p id="btn-test" style="text-decoration:underline; cursor:pointer; margin-top:25px; opacity: 0.7;">PC/カメラなしテストモード</p>
+        <button id="btn-flip">カメラを切り替える</button>
+        <p id="btn-test" style="cursor:pointer; text-decoration:underline; margin-top:20px; opacity:0.6;">テストモード</p>
     </div>
 </div>
 
@@ -52,7 +61,6 @@
 <div id="crosshair"></div>
 <div id="enemy-arrow"><div class="arrow-graphic"></div></div>
 
-<!-- テクスチャ合成用キャンバス -->
 <canvas id="canv-base" width="256" height="256"></canvas>
 <canvas id="canv-smile" width="256" height="256"></canvas>
 <canvas id="canv-angry" width="256" height="256"></canvas>
@@ -64,130 +72,129 @@
 <script type="module">
 import * as THREE from 'three';
 
-// --- 管理変数 ---
 let state = 'TITLE';
 let score = 0;
+let isGyroActive = false;
+let currentFacingMode = "user"; // "user" or "environment"
+let stream = null;
+
 const targets = [];
 const bullets = [];
 const video = document.createElement('video');
+video.setAttribute('playsinline', ''); // iOS対策
 const faceTextures = [];
-let lon = 0, lat = 0; // マウス視点用
+let lon = 0, lat = 0;
 
-// --- Three.js セットアップ ---
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
 const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setPixelRatio(window.devicePixelRatio);
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
-// レイヤー設定: 背景(Video)
 const videoTexture = new THREE.VideoTexture(video);
 const bgScene = new THREE.Scene();
 const bgCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
-const bgMesh = new THREE.Mesh(
-    new THREE.PlaneGeometry(2, 2), 
-    new THREE.MeshBasicMaterial({ map: videoTexture, depthTest: false, depthWrite: false })
-);
+const bgMesh = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.MeshBasicMaterial({ map: videoTexture, depthTest: false, depthWrite: false }));
 bgScene.add(bgMesh);
 
-// --- 表情生成システム (1枚から自動合成) ---
-function makeFaces(baseCanvas) {
-    faceTextures.length = 0;
-    faceTextures.push(new THREE.CanvasTexture(baseCanvas)); // 通常
-
-    // 笑顔風 (黄色＋口拡大)
-    const sCanv = document.getElementById('canv-smile');
-    const sCtx = sCanv.getContext('2d');
-    sCtx.drawImage(baseCanvas, 0, 0);
-    sCtx.fillStyle = "rgba(255, 255, 0, 0.2)"; sCtx.fillRect(0,0,256,256);
-    sCtx.drawImage(baseCanvas, 64, 160, 128, 60, 40, 150, 176, 90);
-    faceTextures.push(new THREE.CanvasTexture(sCanv));
-
-    // 怒り風 (赤色＋吊り目)
-    const aCanv = document.getElementById('canv-angry');
-    const aCtx = aCanv.getContext('2d');
-    aCtx.drawImage(baseCanvas, 0, 0);
-    aCtx.fillStyle = "rgba(255, 0, 0, 0.4)"; aCtx.fillRect(0,0,256,256);
-    aCtx.drawImage(baseCanvas, 0, 80, 256, 70, 0, 60, 256, 80);
-    faceTextures.push(new THREE.CanvasTexture(aCanv));
+// カメラ起動・切り替え関数
+async function setupCamera(mode) {
+    if (stream) stream.getTracks().forEach(track => track.stop());
+    try {
+        currentFacingMode = mode;
+        stream = await navigator.mediaDevices.getUserMedia({ 
+            video: { facingMode: currentFacingMode, width: 1280, height: 720 } 
+        });
+        video.srcObject = stream;
+        await video.play();
+    } catch (e) {
+        alert("カメラの起動に失敗しました。設定を確認してください。");
+    }
 }
 
-// --- 敵の出現 ---
-function spawn(first = false) {
-    const geo = new THREE.SphereGeometry(1.5, 32, 32);
-    const mat = new THREE.MeshBasicMaterial({ map: faceTextures[0] });
-    const mesh = new THREE.Mesh(geo, mat);
+function makeFaces(base) {
+    faceTextures.length = 0;
+    faceTextures.push(new THREE.CanvasTexture(base));
     
-    if (first) {
-        mesh.position.set(0, 0, -10); // 正面に固定
-    } else {
-        const theta = Math.random() * Math.PI * 2;
-        const phi = (Math.random() - 0.5) * Math.PI * 0.6;
-        mesh.position.setFromSphericalCoords(12 + Math.random()*5, phi + Math.PI/2, theta);
+    // 表情を自動生成
+    [ {id:'canv-smile', color: "rgba(255,255,0,0.2)"}, {id:'canv-angry', color: "rgba(255,0,0,0.3)"} ].forEach(obj => {
+        const c = document.getElementById(obj.id);
+        const ctx = c.getContext('2d');
+        ctx.drawImage(base, 0, 0);
+        ctx.fillStyle = obj.color;
+        ctx.fillRect(0,0,256,256);
+        faceTextures.push(new THREE.CanvasTexture(c));
+    });
+}
+
+function spawn(first = false) {
+    const mesh = new THREE.Mesh(new THREE.SphereGeometry(1.5, 32, 32), new THREE.MeshBasicMaterial({ map: faceTextures[0] }));
+    if (first) mesh.position.set(0, 0, -10);
+    else {
+        const t = Math.random() * Math.PI * 2, p = (Math.random() - 0.5) * Math.PI * 0.6;
+        mesh.position.setFromSphericalCoords(12, p + Math.PI/2, t);
     }
     mesh.userData = { offset: Math.random() * 10 };
     scene.add(mesh);
     targets.push(mesh);
 }
 
-// --- メインボタン操作 (iOS許可含む) ---
 const btnMain = document.getElementById('btn-main');
+const btnFlip = document.getElementById('btn-flip');
 const uiLayer = document.getElementById('ui-layer');
 
 btnMain.onclick = async () => {
-    // 1. ジャイロ許可リクエスト (iOS用)
+    // iOS用センサー許可
     if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-        await DeviceOrientationEvent.requestPermission();
+        try { await DeviceOrientationEvent.requestPermission(); } catch(e){}
     }
 
     if (state === 'TITLE') {
-        try {
-            const s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } });
-            video.srcObject = s; video.play();
-            state = 'SCAN';
-            document.getElementById('guide-wrap').style.display = 'block';
-            btnMain.innerText = "撮影！";
-        } catch(e) { alert("カメラが使えません。HTTPS環境であることを確認してください。"); }
+        await setupCamera("user"); // 最初は内カメラ
+        state = 'SCAN';
+        uiLayer.classList.add('scanning');
+        document.getElementById('guide-wrap').style.display = 'block';
+        btnFlip.style.display = 'block';
+        btnMain.innerText = "撮影！";
     } else if (state === 'SCAN') {
         const canv = document.getElementById('canv-base');
         const ctx = canv.getContext('2d');
-        const size = Math.min(video.videoWidth, video.videoHeight) * 0.7;
-        ctx.save();
-        ctx.translate(256,0); ctx.scale(-1,1);
+        // カメラの向きに合わせて反転を制御
+        if (currentFacingMode === "user") {
+            ctx.translate(256, 0); ctx.scale(-1, 1);
+        }
+        const size = Math.min(video.videoWidth, video.videoHeight);
         ctx.drawImage(video, (video.videoWidth-size)/2, (video.videoHeight-size)/2, size, size, 0, 0, 256, 256);
-        ctx.restore();
         makeFaces(canv);
         start();
     }
 };
 
+// カメラ切り替え
+btnFlip.onclick = async () => {
+    const nextMode = (currentFacingMode === "user") ? "environment" : "user";
+    await setupCamera(nextMode);
+};
+
 document.getElementById('btn-test').onclick = () => {
     const canv = document.getElementById('canv-base');
     const ctx = canv.getContext('2d');
-    ctx.fillStyle = "darkblue"; ctx.fillRect(0,0,256,256);
-    ctx.fillStyle = "white"; ctx.beginPath(); ctx.arc(80,100,25,0,7); ctx.arc(176,100,25,0,7); ctx.fill();
-    ctx.fillRect(80,180,96,15);
+    ctx.fillStyle = "blue"; ctx.fillRect(0,0,256,256);
     makeFaces(canv);
     start();
 };
 
 function start() {
     state = 'PLAY';
-    uiLayer.style.opacity = '0';
-    setTimeout(() => uiLayer.style.display = 'none', 500);
+    uiLayer.style.display = 'none';
     document.getElementById('crosshair').style.display = 'block';
     document.getElementById('score-board').style.display = 'block';
     document.getElementById('enemy-arrow').style.display = 'block';
-    
     spawn(true); spawn(); spawn();
-
-    // ゲーム用背景（外カメラ）
-    navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
-        .then(s => { video.srcObject = s; video.play(); }).catch(()=>{});
+    // ゲーム開始時は外カメラを優先
+    setupCamera("environment");
 }
 
-// --- 視点・ジャイロ操作 ---
 document.addEventListener('mousemove', (e) => {
     if (state === 'PLAY') {
         lon -= e.movementX * 0.15;
@@ -196,96 +203,63 @@ document.addEventListener('mousemove', (e) => {
 });
 
 window.addEventListener('deviceorientation', (e) => {
-    if (state === 'PLAY' && e.alpha !== null) {
-        // AR視点移動の核心
-        camera.rotation.set(
-            THREE.MathUtils.degToRad(e.beta - 90),
-            THREE.MathUtils.degToRad(e.alpha),
-            THREE.MathUtils.degToRad(e.gamma),
-            'YXZ'
-        );
+    if (state === 'PLAY' && e.alpha !== null && e.alpha !== 0) {
+        isGyroActive = true;
+        camera.rotation.set(THREE.MathUtils.degToRad(e.beta - 90), THREE.MathUtils.degToRad(e.alpha), THREE.MathUtils.degToRad(e.gamma), 'YXZ');
     }
 }, true);
 
-// --- 弾の発射 ---
 window.addEventListener('pointerdown', (e) => {
     if (state !== 'PLAY' || e.target.tagName === 'BUTTON') return;
-    
-    const bullet = new THREE.Mesh(
-        new THREE.SphereGeometry(0.3, 8, 8),
-        new THREE.MeshBasicMaterial({ color: 0xffff00 })
-    );
-    bullet.position.copy(camera.position);
+    const b = new THREE.Mesh(new THREE.SphereGeometry(0.3), new THREE.MeshBasicMaterial({ color: 0xffff00 }));
+    b.position.copy(camera.position);
     const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
-    bullet.userData.velocity = dir.multiplyScalar(1.5);
-    scene.add(bullet);
-    bullets.push(bullet);
+    b.userData.velocity = dir.multiplyScalar(1.2);
+    scene.add(b); bullets.push(b);
 });
 
-// --- メインループ ---
 function animate() {
     requestAnimationFrame(animate);
-    
     if (state === 'PLAY') {
-        // マウス視点の更新（ジャイロがない場合用）
-        if (camera.rotation.x === 0) {
+        if (!isGyroActive) {
             const phi = THREE.MathUtils.degToRad(90 - lat);
             const theta = THREE.MathUtils.degToRad(lon);
             camera.lookAt(new THREE.Vector3().setFromSphericalCoords(1, phi, theta));
         }
 
-        let nearestPos = null;
-
-        // 敵のアニメーション
+        let nearest = null;
         targets.forEach(t => {
             const idx = Math.floor(Date.now() * 0.006 + t.userData.offset) % 3;
             t.material.map = faceTextures[idx];
             t.lookAt(camera.position);
-
-            // 画面内判定
             const v = t.position.clone().project(camera);
-            if (v.z > 1 || v.x < -0.8 || v.x > 0.8 || v.y < -0.8 || v.y > 0.8) {
-                nearestPos = v; // 画面外にいる敵の座標を記録
-            }
+            if (v.z > 1 || Math.abs(v.x) > 0.8 || Math.abs(v.y) > 0.8) nearest = v;
         });
 
-        // 矢印ガイド
         const arrow = document.getElementById('enemy-arrow');
-        if (nearestPos && targets.length > 0) {
+        if (nearest && targets.length > 0) {
             arrow.style.display = 'block';
-            const rot = Math.atan2(nearestPos.x, nearestPos.y);
-            arrow.style.transform = `rotate(${rot}rad)`;
-        } else {
-            arrow.style.display = 'none';
-        }
+            arrow.style.transform = `rotate(${Math.atan2(nearest.x, nearest.y)}rad)`;
+        } else { arrow.style.display = 'none'; }
 
-        // 弾の更新
         for (let i = bullets.length - 1; i >= 0; i--) {
-            const b = bullets[i];
-            b.position.add(b.userData.velocity);
-
+            const b = bullets[i]; b.position.add(b.userData.velocity);
             for (let j = targets.length - 1; j >= 0; j--) {
                 const t = targets[j];
-                if (b.position.distanceTo(t.position) < 1.8) {
+                if (b.position.distanceTo(t.position) < 2) {
                     scene.remove(t); targets.splice(j, 1);
                     scene.remove(b); bullets.splice(i, 1);
-                    score += 100;
-                    document.getElementById('score-board').innerText = `SCORE: ${score}`;
-                    setTimeout(() => spawn(), 2000);
-                    break;
+                    score += 100; document.getElementById('score-board').innerText = `SCORE: ${score}`;
+                    setTimeout(spawn, 2000); break;
                 }
-            }
-            if (b && b.position.length() > 50) {
-                scene.remove(b); bullets.splice(i, 1);
             }
         }
     }
-
     renderer.autoClear = false;
     renderer.clear();
-    renderer.render(bgScene, bgCam); // 背景
-    renderer.clearDepth();           // 深度を消して手前に描画
-    renderer.render(scene, camera);  // 3Dオブジェクト
+    renderer.render(bgScene, bgCam);
+    renderer.clearDepth();
+    renderer.render(scene, camera);
 }
 animate();
 
