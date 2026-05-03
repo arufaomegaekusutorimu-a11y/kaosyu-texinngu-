@@ -3,91 +3,144 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Next-Gen Face Shooting</title>
+    <title>3DS Face Shooting Web</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #000; }
-        #ui { position: absolute; top: 20px; left: 20px; color: white; z-index: 10; font-family: sans-serif; }
-        button { padding: 10px; cursor: pointer; background: rgba(255,255,255,0.2); color: white; border: 1px solid white; border-radius: 5px; }
+        body { margin: 0; overflow: hidden; background: #000; font-family: sans-serif; }
+        #ui { position: absolute; top: 10px; left: 10px; color: white; z-index: 100; pointer-events: none; }
+        #controls { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); z-index: 100; display: flex; gap: 10px; }
+        button { padding: 12px 20px; cursor: pointer; pointer-events: auto; background: rgba(255,255,255,0.8); border: none; border-radius: 20px; font-weight: bold; }
         #crosshair { 
             position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            width: 40px; height: 40px; border: 2px solid rgba(255,0,0,0.5); border-radius: 50%;
-            pointer-events: none; z-index: 5;
+            width: 30px; height: 30px; border: 2px solid #0f0; border-radius: 50%;
+            pointer-events: none; z-index: 50;
         }
-        #crosshair::after { content: ''; position: absolute; top: 50%; left: 50%; width: 10px; height: 2px; background: red; transform: translate(-50%,-50%); }
-        #crosshair::before { content: ''; position: absolute; top: 50%; left: 50%; width: 2px; height: 10px; background: red; transform: translate(-50%,-50%); }
+        canvas#faceCapture { display: none; } /* 顔切り抜き用隠しキャンバス */
     </style>
 </head>
 <body>
 
 <div id="ui">
     <div id="score">SCORE: 0</div>
-    <button id="cameraToggle">カメラ: OFF (ダミー顔モード)</button>
-    <p style="font-size: 12px;">※スマホは画面タップで射撃 / 傾きで操作</p>
+    <div id="status">カメラをONにして顔を映してね</div>
 </div>
-<div id="crosshair"></div>
 
-<!-- ライブラリ読み込み -->
+<div id="controls">
+    <button id="btnCamera">カメラ起動(外向き)</button>
+    <button id="btnShot">SHOT!</button>
+</div>
+
+<div id="crosshair"></div>
+<canvas id="faceCapture" width="128" height="128"></canvas>
+
 <script type="importmap">
 {
     "imports": {
-        "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
     }
 }
 </script>
 
 <script type="module">
 import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
-// --- 設定変数 ---
-let useCamera = false;
-let score = 0;
-const targets = [];
+// --- MediaPipe 顔認識設定 ---
+import { FaceDetector, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0";
+
+let faceDetector;
+const setupFaceDetector = async () => {
+    const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0/wasm");
+    faceDetector = await FaceDetector.createFromOptions(vision, {
+        baseOptions: { modelAssetPath: `https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite` },
+        runningMode: "VIDEO"
+    });
+};
+setupFaceDetector();
+
+// --- Three.js 基本設定 ---
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
-// --- カメラ映像の設定 ---
+// マウス操作用 (PC)
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableZoom = false;
+controls.enablePan = false;
+camera.position.set(0, 0, 0.1); // 中心に配置
+
+// 背景カメラ映像
 const video = document.createElement('video');
-video.setAttribute('autoplay', '');
-video.setAttribute('muted', '');
 video.setAttribute('playsinline', '');
-
 const videoTexture = new THREE.VideoTexture(video);
-const backgroundMesh = new THREE.Mesh(
-    new THREE.PlaneGeometry(2, 2),
-    new THREE.MeshBasicMaterial({ map: videoTexture })
-);
-backgroundMesh.material.depthTest = false;
-backgroundMesh.material.depthWrite = false;
-const backgroundScene = new THREE.Scene();
-const backgroundCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
-backgroundScene.add(backgroundMesh);
+const bgScene = new THREE.Scene();
+const bgCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+const bgMesh = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.MeshBasicMaterial({ map: videoTexture }));
+bgScene.add(bgMesh);
 
-// --- 敵（顔ターゲット）の作成関数 ---
-function createEnemy() {
-    const geometry = new THREE.SphereGeometry(0.5, 32, 32);
-    // カメラOFF時はデフォルトのテクスチャ（ダミー画像など）
-    const material = new THREE.MeshBasicMaterial({ color: 0xffffff });
+let score = 0;
+const targets = [];
+const faceCanvas = document.getElementById('faceCapture');
+const faceCtx = faceCanvas.getContext('2d');
+
+// --- 敵の作成 (顔写真テクスチャ) ---
+function createEnemy(texture = null) {
+    const geometry = new THREE.SphereGeometry(0.8, 32, 32);
+    const material = texture 
+        ? new THREE.MeshBasicMaterial({ map: texture }) 
+        : new THREE.MeshBasicMaterial({ color: 0x555555 }); // 顔がない時はグレーの球体
     
     const mesh = new THREE.Mesh(geometry, material);
     
-    // ランダムな位置（カメラの周囲）
+    // プレイヤーの周り(球状)に配置
+    const phi = Math.random() * Math.PI * 2;
+    const theta = Math.random() * Math.PI;
+    const r = 8;
     mesh.position.set(
-        (Math.random() - 0.5) * 10,
-        (Math.random() - 0.5) * 10,
-        -5 - Math.random() * 5
+        r * Math.sin(theta) * Math.cos(phi),
+        r * Math.sin(theta) * Math.sin(phi),
+        r * Math.cos(theta)
     );
+    mesh.lookAt(0, 0, 0); // プレイヤーの方を向く
     
     scene.add(mesh);
     targets.push(mesh);
 }
 
-// --- 射撃ロジック ---
+// --- 顔の切り抜きと敵生成 ---
+async function detectAndSpawn() {
+    if (!faceDetector || video.readyState < 2) return;
+    
+    const detections = faceDetector.detectForVideo(video, performance.now()).detections;
+    
+    if (detections.length > 0) {
+        const box = detections[0].boundingBox;
+        // 顔部分をキャンバスにコピー
+        faceCtx.drawImage(video, 
+            video.videoWidth - (box.originX + box.width), box.originY, box.width, box.height, 
+            0, 0, 128, 128);
+        
+        const tex = new THREE.CanvasTexture(faceCanvas);
+        createEnemy(tex);
+        document.getElementById('status').innerText = "顔をキャプチャして敵を生成しました！";
+    }
+}
+
+// --- カメラ起動 (外カメラ優先) ---
+document.getElementById('btnCamera').onclick = async () => {
+    const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { facingMode: "environment" } 
+    });
+    video.srcObject = stream;
+    video.play();
+    setInterval(detectAndSpawn, 3000); // 3秒ごとに顔を探して敵を増やす
+};
+
+// --- 射撃 ---
 function shoot() {
     const raycaster = new THREE.Raycaster();
-    // 画面中央（照準）からレイを飛ばす
     raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
     const intersects = raycaster.intersectObjects(targets);
 
@@ -97,67 +150,39 @@ function shoot() {
         targets.splice(targets.indexOf(hit), 1);
         score += 100;
         document.getElementById('score').innerText = `SCORE: ${score}`;
-        createEnemy(); // 倒したら補充
     }
 }
+document.getElementById('btnShot').onclick = shoot;
+window.addEventListener('keydown', (e) => { if(e.code === 'Space') shoot(); });
 
-// --- デバイス傾き検知 ---
+// --- ジャイロ操作 (スマホ) ---
 window.addEventListener('deviceorientation', (e) => {
-    if (e.alpha !== null) {
-        // ジャイロによる回転（簡易版）
-        camera.rotation.y = THREE.MathUtils.degToRad(e.alpha);
+    if (e.alpha) {
+        // OrbitControlsを一時的に無効化してジャイロで上書きも可能
+        camera.rotation.y = THREE.MathUtils.degToRad(e.alpha + e.gamma);
         camera.rotation.x = THREE.MathUtils.degToRad(e.beta - 90);
     }
 }, true);
 
-// --- カメラ切り替え ---
-document.getElementById('cameraToggle').onclick = async () => {
-    if (!useCamera) {
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-            video.srcObject = stream;
-            video.play();
-            useCamera = true;
-            document.getElementById('cameraToggle').innerText = "カメラ: ON";
-        } catch (err) {
-            alert("カメラへのアクセスを許可してください");
-        }
-    } else {
-        const stream = video.srcObject;
-        stream.getTracks().forEach(track => track.stop());
-        useCamera = false;
-        document.getElementById('cameraToggle').innerText = "カメラ: OFF";
-    }
-};
-
-// --- メインループ ---
+// --- ループ ---
 function animate() {
     requestAnimationFrame(animate);
-    
-    // 敵を少し動かす
     targets.forEach(t => {
-        t.position.y += Math.sin(Date.now() * 0.002) * 0.01;
+        t.position.applyAxisAngle(new THREE.Vector3(0,1,0), 0.01); // ゆっくり回転
     });
-
     renderer.autoClear = false;
     renderer.clear();
-    if (useCamera) renderer.render(backgroundScene, backgroundCamera);
+    renderer.render(bgScene, bgCam);
     renderer.render(scene, camera);
 }
-
-// 初期化
-window.onclick = shoot;
-for(let i=0; i<5; i++) createEnemy();
-camera.position.z = 0;
 animate();
 
-// 画面リサイズ対応
+// リサイズ対応
 window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
 });
-
 </script>
 </body>
 </html>
