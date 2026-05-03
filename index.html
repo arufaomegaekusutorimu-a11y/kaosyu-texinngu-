@@ -2,48 +2,60 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>顔シューティング -弾発射版-</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>低予算顔シューティング -完全版-</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #000; font-family: sans-serif; color: white; }
-        #overlay { position: absolute; inset: 0; z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(0,0,0,0.8); text-align: center; }
+        body { margin: 0; overflow: hidden; background: #000; font-family: 'Hiragino Kaku Gothic ProN', sans-serif; color: white; }
         
-        #guide-wrap { position: relative; width: 240px; height: 240px; border: 4px solid #0f0; border-radius: 50%; display: none; margin-bottom: 20px; }
-        .guide-line { position: absolute; background: rgba(0,255,0,0.5); height: 2px; width: 40px; top: 40%; }
+        /* 画面全体オーバーレイ */
+        #ui-layer { position: absolute; inset: 0; z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(0,0,0,0.8); transition: opacity 0.5s; }
         
-        button { padding: 15px 40px; font-size: 1.5rem; cursor: pointer; background: #ff4400; color: white; border: none; border-radius: 50px; font-weight: bold; }
+        /* 撮影ガイド（3DS風） */
+        #guide-wrap { position: relative; width: 260px; height: 300px; border: 4px solid #0f0; border-radius: 50% 50% 45% 45%; display: none; margin-bottom: 20px; box-shadow: 0 0 15px #0f0; }
+        .guide-line { position: absolute; background: rgba(0,255,0,0.6); height: 2px; width: 50px; top: 40%; }
+        #guide-mouth { position: absolute; bottom: 25%; left: 50%; width: 80px; height: 2px; transform: translateX(-50%); background: rgba(0,255,0,0.6); }
+
+        button { padding: 18px 45px; font-size: 1.4rem; cursor: pointer; background: #ff4400; color: white; border: none; border-radius: 50px; font-weight: bold; box-shadow: 0 5px #992200; }
+        button:active { transform: translateY(3px); box-shadow: none; }
+
+        /* ゲーム中UI */
+        #crosshair { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 40px; height: 40px; border: 2px solid #fff; border-radius: 50%; display: none; z-index: 50; pointer-events: none; }
+        #crosshair::after { content: ''; position: absolute; top: 50%; left: 50%; width: 60%; height: 2px; background: #fff; transform: translate(-50%, -50%); }
+        #crosshair::before { content: ''; position: absolute; top: 50%; left: 50%; width: 2px; height: 60%; background: #fff; transform: translate(-50%, -50%); }
         
-        #crosshair { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 30px; height: 30px; border: 2px solid rgba(255,255,255,0.5); border-radius: 50%; display: none; z-index: 50; pointer-events: none; }
-        #crosshair::after { content: ''; position: absolute; top: 50%; left: 50%; width: 4px; height: 4px; background: red; transform: translate(-50%, -50%); border-radius: 50%; }
-        
-        #score-board { position: absolute; top: 20px; left: 20px; font-size: 24px; color: #0f0; display: none; z-index: 80; text-shadow: 2px 2px 4px #000; }
-        #enemy-guide { position: absolute; top: 50%; left: 50%; width: 100px; height: 100px; margin-left: -50px; margin-top: -50px; pointer-events: none; display: none; z-index: 60; }
-        .arrow { position: absolute; width: 0; height: 0; border-left: 15px solid transparent; border-right: 15px solid transparent; border-bottom: 30px solid yellow; left: 35px; top: -60px; }
+        #score-board { position: absolute; top: 20px; left: 20px; font-size: 24px; color: #0f0; display: none; z-index: 80; font-weight: bold; text-shadow: 2px 2px 4px #000; }
+
+        /* 敵方向ガイド矢印 */
+        #enemy-arrow { position: absolute; top: 50%; left: 50%; width: 120px; height: 120px; margin: -60px; pointer-events: none; display: none; z-index: 60; }
+        .arrow-graphic { width: 0; height: 0; border-left: 20px solid transparent; border-right: 20px solid transparent; border-bottom: 35px solid #ffea00; position: absolute; left: 40px; top: -70px; filter: drop-shadow(0 0 5px black); }
+
+        canvas { display: none; }
     </style>
 </head>
 <body>
 
-<div id="overlay">
-    <h1>顔シューティング</h1>
+<div id="ui-layer">
+    <h1 id="title-text">顔シューティング</h1>
     <div id="guide-wrap">
-        <div class="guide-line" style="left:15%"></div>
-        <div class="guide-line" style="right:15%"></div>
-        <div style="position:absolute; bottom:25%; left:50%; transform:translateX(-50%); width:60px; height:2px; background:rgba(0,255,0,0.5);"></div>
+        <div class="guide-line" style="left:10%"></div>
+        <div class="guide-line" style="right:10%"></div>
+        <div id="guide-mouth"></div>
     </div>
-    <div class="ui-box">
-        <p id="status-msg">クリックで弾を発射して敵を倒せ！</p>
-        <button id="btn-main">カメラ起動</button>
-        <p id="test-mode" style="text-decoration:underline; cursor:pointer; margin-top:20px;">カメラなしでテスト</p>
+    <div class="ui-content">
+        <p id="msg">スマホを傾けるか、マウスで操作せよ！</p>
+        <button id="btn-main">カメラを起動</button>
+        <p id="btn-test" style="text-decoration:underline; cursor:pointer; margin-top:25px; opacity: 0.7;">PC/カメラなしテストモード</p>
     </div>
 </div>
 
 <div id="score-board">SCORE: 0</div>
 <div id="crosshair"></div>
-<div id="enemy-guide"><div class="arrow"></div></div>
+<div id="enemy-arrow"><div class="arrow-graphic"></div></div>
 
-<canvas id="canvas-base" width="256" height="256" style="display:none;"></canvas>
-<canvas id="canvas-smile" width="256" height="256" style="display:none;"></canvas>
-<canvas id="canvas-angry" width="256" height="256" style="display:none;"></canvas>
+<!-- テクスチャ合成用キャンバス -->
+<canvas id="canv-base" width="256" height="256"></canvas>
+<canvas id="canv-smile" width="256" height="256"></canvas>
+<canvas id="canv-angry" width="256" height="256"></canvas>
 
 <script type="importmap">
 { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
@@ -52,220 +64,228 @@
 <script type="module">
 import * as THREE from 'three';
 
+// --- 管理変数 ---
 let state = 'TITLE';
 let score = 0;
 const targets = [];
-const bullets = []; // 弾を管理する配列
+const bullets = [];
 const video = document.createElement('video');
 const faceTextures = [];
+let lon = 0, lat = 0; // マウス視点用
 
-// --- Three.js 基本設定 ---
+// --- Three.js セットアップ ---
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
 const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(window.devicePixelRatio);
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
-// 背景シーン (深度を無視して一番奥に描画させる)
+// レイヤー設定: 背景(Video)
 const videoTexture = new THREE.VideoTexture(video);
 const bgScene = new THREE.Scene();
 const bgCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
 const bgMesh = new THREE.Mesh(
     new THREE.PlaneGeometry(2, 2), 
-    new THREE.MeshBasicMaterial({ map: videoTexture, depthTest: false, depthWrite: false }) // 奥に固定
+    new THREE.MeshBasicMaterial({ map: videoTexture, depthTest: false, depthWrite: false })
 );
 bgScene.add(bgMesh);
 
-// --- 表情生成 ---
-function generateExpressions(sourceCanvas) {
+// --- 表情生成システム (1枚から自動合成) ---
+function makeFaces(baseCanvas) {
     faceTextures.length = 0;
-    const base = sourceCanvas;
-    faceTextures.push(new THREE.CanvasTexture(base));
+    faceTextures.push(new THREE.CanvasTexture(baseCanvas)); // 通常
 
-    const smile = document.getElementById('canvas-smile');
-    const sCtx = smile.getContext('2d');
-    sCtx.drawImage(base, 0, 0);
+    // 笑顔風 (黄色＋口拡大)
+    const sCanv = document.getElementById('canv-smile');
+    const sCtx = sCanv.getContext('2d');
+    sCtx.drawImage(baseCanvas, 0, 0);
     sCtx.fillStyle = "rgba(255, 255, 0, 0.2)"; sCtx.fillRect(0,0,256,256);
-    faceTextures.push(new THREE.CanvasTexture(smile));
+    sCtx.drawImage(baseCanvas, 64, 160, 128, 60, 40, 150, 176, 90);
+    faceTextures.push(new THREE.CanvasTexture(sCanv));
 
-    const angry = document.getElementById('canvas-angry');
-    const aCtx = angry.getContext('2d');
-    aCtx.drawImage(base, 0, 0);
+    // 怒り風 (赤色＋吊り目)
+    const aCanv = document.getElementById('canv-angry');
+    const aCtx = aCanv.getContext('2d');
+    aCtx.drawImage(baseCanvas, 0, 0);
     aCtx.fillStyle = "rgba(255, 0, 0, 0.4)"; aCtx.fillRect(0,0,256,256);
-    faceTextures.push(new THREE.CanvasTexture(angry));
+    aCtx.drawImage(baseCanvas, 0, 80, 256, 70, 0, 60, 256, 80);
+    faceTextures.push(new THREE.CanvasTexture(aCanv));
 }
 
 // --- 敵の出現 ---
-function spawnEnemy(isFirst = false) {
-    const geometry = new THREE.SphereGeometry(1.5, 32, 32);
-    const material = new THREE.MeshBasicMaterial({ map: faceTextures[0] });
-    const mesh = new THREE.Mesh(geometry, material);
+function spawn(first = false) {
+    const geo = new THREE.SphereGeometry(1.5, 32, 32);
+    const mat = new THREE.MeshBasicMaterial({ map: faceTextures[0] });
+    const mesh = new THREE.Mesh(geo, mat);
     
-    if (isFirst) {
-        mesh.position.set(0, 0, -8); // 確実に目の前
+    if (first) {
+        mesh.position.set(0, 0, -10); // 正面に固定
     } else {
         const theta = Math.random() * Math.PI * 2;
-        const phi = (Math.random() - 0.5) * Math.PI * 0.5;
-        mesh.position.setFromSphericalCoords(10 + Math.random() * 5, phi + Math.PI/2, theta);
+        const phi = (Math.random() - 0.5) * Math.PI * 0.6;
+        mesh.position.setFromSphericalCoords(12 + Math.random()*5, phi + Math.PI/2, theta);
     }
-    
-    mesh.lookAt(0, 0, 0);
     mesh.userData = { offset: Math.random() * 10 };
     scene.add(mesh);
     targets.push(mesh);
 }
 
-// --- UI / カメラ制御 ---
+// --- メインボタン操作 (iOS許可含む) ---
 const btnMain = document.getElementById('btn-main');
-const guideWrap = document.getElementById('guide-wrap');
-const overlay = document.getElementById('overlay');
+const uiLayer = document.getElementById('ui-layer');
 
 btnMain.onclick = async () => {
+    // 1. ジャイロ許可リクエスト (iOS用)
+    if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+        await DeviceOrientationEvent.requestPermission();
+    }
+
     if (state === 'TITLE') {
         try {
             const s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } });
             video.srcObject = s; video.play();
             state = 'SCAN';
-            guideWrap.style.display = 'block';
+            document.getElementById('guide-wrap').style.display = 'block';
             btnMain.innerText = "撮影！";
-        } catch(e) { alert("カメラが起動できません。"); }
+        } catch(e) { alert("カメラが使えません。HTTPS環境であることを確認してください。"); }
     } else if (state === 'SCAN') {
-        const canvas = document.getElementById('canvas-base');
-        const ctx = canvas.getContext('2d');
+        const canv = document.getElementById('canv-base');
+        const ctx = canv.getContext('2d');
         const size = Math.min(video.videoWidth, video.videoHeight) * 0.7;
+        ctx.save();
+        ctx.translate(256,0); ctx.scale(-1,1);
         ctx.drawImage(video, (video.videoWidth-size)/2, (video.videoHeight-size)/2, size, size, 0, 0, 256, 256);
-        generateExpressions(canvas);
-        startGame();
+        ctx.restore();
+        makeFaces(canv);
+        start();
     }
 };
 
-document.getElementById('test-mode').onclick = () => {
-    const canvas = document.getElementById('canvas-base');
-    const ctx = canvas.getContext('2d');
-    ctx.fillStyle = "blue"; ctx.fillRect(0,0,256,256);
-    ctx.fillStyle = "white"; ctx.fillRect(60,80,30,30); ctx.fillRect(160,80,30,30);
-    ctx.fillRect(80,180,100,20);
-    generateExpressions(canvas);
-    startGame();
+document.getElementById('btn-test').onclick = () => {
+    const canv = document.getElementById('canv-base');
+    const ctx = canv.getContext('2d');
+    ctx.fillStyle = "darkblue"; ctx.fillRect(0,0,256,256);
+    ctx.fillStyle = "white"; ctx.beginPath(); ctx.arc(80,100,25,0,7); ctx.arc(176,100,25,0,7); ctx.fill();
+    ctx.fillRect(80,180,96,15);
+    makeFaces(canv);
+    start();
 };
 
-function startGame() {
+function start() {
     state = 'PLAY';
-    overlay.style.display = 'none';
+    uiLayer.style.opacity = '0';
+    setTimeout(() => uiLayer.style.display = 'none', 500);
     document.getElementById('crosshair').style.display = 'block';
     document.getElementById('score-board').style.display = 'block';
+    document.getElementById('enemy-arrow').style.display = 'block';
     
-    spawnEnemy(true); 
-    for(let i=0; i<3; i++) spawnEnemy(false);
+    spawn(true); spawn(); spawn();
 
+    // ゲーム用背景（外カメラ）
     navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
         .then(s => { video.srcObject = s; video.play(); }).catch(()=>{});
 }
 
-// --- 視点操作 ---
-let lon = 0, lat = 0;
+// --- 視点・ジャイロ操作 ---
 document.addEventListener('mousemove', (e) => {
     if (state === 'PLAY') {
-        lon -= e.movementX * 0.2;
-        lat = Math.max(-85, Math.min(85, lat - e.movementY * 0.2));
+        lon -= e.movementX * 0.15;
+        lat = Math.max(-85, Math.min(85, lat - e.movementY * 0.15));
     }
 });
 
+window.addEventListener('deviceorientation', (e) => {
+    if (state === 'PLAY' && e.alpha !== null) {
+        // AR視点移動の核心
+        camera.rotation.set(
+            THREE.MathUtils.degToRad(e.beta - 90),
+            THREE.MathUtils.degToRad(e.alpha),
+            THREE.MathUtils.degToRad(e.gamma),
+            'YXZ'
+        );
+    }
+}, true);
+
 // --- 弾の発射 ---
-window.onclick = () => {
-    if (state !== 'PLAY') return;
+window.addEventListener('pointerdown', (e) => {
+    if (state !== 'PLAY' || e.target.tagName === 'BUTTON') return;
     
-    // 黄色い光る弾を作成
     const bullet = new THREE.Mesh(
         new THREE.SphereGeometry(0.3, 8, 8),
         new THREE.MeshBasicMaterial({ color: 0xffff00 })
     );
-    
-    // カメラの位置からスタート
     bullet.position.copy(camera.position);
-    
-    // カメラの向いている方向（前）を計算
-    const direction = new THREE.Vector3(0, 0, -1);
-    direction.applyQuaternion(camera.quaternion);
-    
-    // 弾の飛ぶスピード
-    bullet.userData.velocity = direction.multiplyScalar(2.0); 
-    
+    const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+    bullet.userData.velocity = dir.multiplyScalar(1.5);
     scene.add(bullet);
     bullets.push(bullet);
-};
+});
 
 // --- メインループ ---
 function animate() {
     requestAnimationFrame(animate);
+    
     if (state === 'PLAY') {
-        const phi = THREE.MathUtils.degToRad(90 - lat);
-        const theta = THREE.MathUtils.degToRad(lon);
-        camera.lookAt(new THREE.Vector3().setFromSphericalCoords(1, phi, theta));
+        // マウス視点の更新（ジャイロがない場合用）
+        if (camera.rotation.x === 0) {
+            const phi = THREE.MathUtils.degToRad(90 - lat);
+            const theta = THREE.MathUtils.degToRad(lon);
+            camera.lookAt(new THREE.Vector3().setFromSphericalCoords(1, phi, theta));
+        }
 
-        let nearestEnemy = null;
+        let nearestPos = null;
 
         // 敵のアニメーション
         targets.forEach(t => {
-            const idx = Math.floor(Date.now() * 0.005 + t.userData.offset) % 3;
+            const idx = Math.floor(Date.now() * 0.006 + t.userData.offset) % 3;
             t.material.map = faceTextures[idx];
             t.lookAt(camera.position);
 
-            const vector = t.position.clone().project(camera);
-            if (vector.z < 1) { 
-                if (vector.x < -1 || vector.x > 1 || vector.y < -1 || vector.y > 1) nearestEnemy = vector;
-            } else { 
-                nearestEnemy = vector;
+            // 画面内判定
+            const v = t.position.clone().project(camera);
+            if (v.z > 1 || v.x < -0.8 || v.x > 0.8 || v.y < -0.8 || v.y > 0.8) {
+                nearestPos = v; // 画面外にいる敵の座標を記録
             }
         });
 
         // 矢印ガイド
-        const guideEl = document.getElementById('enemy-guide');
-        if (nearestEnemy && targets.length > 0) {
-            guideEl.style.display = 'block';
-            const angle = Math.atan2(nearestEnemy.y, nearestEnemy.x);
-            guideEl.style.transform = `rotate(${angle + Math.PI/2}rad) translate(0, -120px)`;
+        const arrow = document.getElementById('enemy-arrow');
+        if (nearestPos && targets.length > 0) {
+            arrow.style.display = 'block';
+            const rot = Math.atan2(nearestPos.x, nearestPos.y);
+            arrow.style.transform = `rotate(${rot}rad)`;
         } else {
-            guideEl.style.display = 'none';
+            arrow.style.display = 'none';
         }
 
-        // 弾の移動と当たり判定
+        // 弾の更新
         for (let i = bullets.length - 1; i >= 0; i--) {
             const b = bullets[i];
-            b.position.add(b.userData.velocity); // 弾を前に進める
+            b.position.add(b.userData.velocity);
 
-            let hit = false;
-            // 敵と弾の距離をチェック
             for (let j = targets.length - 1; j >= 0; j--) {
                 const t = targets[j];
-                // 弾と敵の距離が2.0以内なら命中
-                if (b.position.distanceTo(t.position) < 2.0) {
-                    scene.remove(t);
-                    targets.splice(j, 1);
-                    hit = true;
+                if (b.position.distanceTo(t.position) < 1.8) {
+                    scene.remove(t); targets.splice(j, 1);
+                    scene.remove(b); bullets.splice(i, 1);
                     score += 100;
                     document.getElementById('score-board').innerText = `SCORE: ${score}`;
-                    setTimeout(() => spawnEnemy(false), 2000); // 2秒後に新しい敵を補充
+                    setTimeout(() => spawn(), 2000);
                     break;
                 }
             }
-
-            // 命中した、または遠くへ飛びすぎた弾を消す
-            if (hit || b.position.distanceTo(camera.position) > 100) {
-                scene.remove(b);
-                bullets.splice(i, 1);
+            if (b && b.position.length() > 50) {
+                scene.remove(b); bullets.splice(i, 1);
             }
         }
     }
 
     renderer.autoClear = false;
     renderer.clear();
-    // 1. 背景を描画
-    renderer.render(bgScene, bgCam);
-    // 2. 奥行き（深度）の情報をクリアする！！（これがないと敵が背景に埋もれる）
-    renderer.clearDepth();
-    // 3. 敵と弾を描画
-    renderer.render(scene, camera);
+    renderer.render(bgScene, bgCam); // 背景
+    renderer.clearDepth();           // 深度を消して手前に描画
+    renderer.render(scene, camera);  // 3Dオブジェクト
 }
 animate();
 
